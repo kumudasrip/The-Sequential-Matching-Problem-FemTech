@@ -1,294 +1,277 @@
-# MatchWise: An Uncertainty-Aware Policy for Sequential Reciprocal Matching
+# MatchWise: Decision-Aware Clarification for Sequential Reciprocal Matching
 
-**Research Proposal — Round 1**  
+**Round 1 Research Proposal**  
 **Hackathon:** Romeo & Juliet × IIT Madras  
 **Team project:** MatchWise
 
-## 1. Abstract
+## Abstract
 
-Sequential reciprocal matching requires more than identifying individually promising pairs. A successful policy must account for both participants' constraints, incomplete information, limited clarification resources, changing availability, and feedback that becomes observable only after decisions have been made. An introduction that appears attractive from one person's perspective may violate the other person's preferences or practical constraints. Similarly, choosing one pair can eliminate opportunities for other participants, making allocation a pool-wide decision rather than an independent ranking exercise.
+The One Introduction Problem is a sequential decision problem in which a policy must decide which information to request, which reciprocal pairs to introduce, and when to wait. Decisions must respect strict hard constraints, a limited daily clarification budget, non-overlapping introductions, changing availability, and feedback that may be missing or delayed. Selecting individually attractive pairs is insufficient because one introduction can prevent other introductions in the same batch.
 
-We propose **MatchWise**, an uncertainty-aware sequential matching policy designed to combine reciprocal feasibility checks, pool-wide allocation, selective clarification, and feedback-aware decision-making. The policy will treat hard constraints as non-negotiable, use observed soft preferences to estimate pair utility, and consider the value of additional information before spending the clarification budget. It will operate exclusively on observable simulator state and policy-owned memory.
+We propose **MatchWise**, a policy centred on two connected ideas: (1) decision-aware clarification, which values a question by its expected effect on the best feasible global matching, and (2) global maximum-weight matching, which selects a non-overlapping batch from the currently feasible candidate graph. Reciprocal hard-constraint checks are an invariant, not a score that can be traded away. Pair weights will initially use a transparent soft-preference utility; outcome-aware estimates of Mutual Second-Meeting Intention (MSMI) may be added only if they can be learned and evaluated reliably. Feedback adaptation and time-aware waiting will be treated as optional extensions.
 
-We hypothesise that combining global allocation with selective clarification can improve Mutual Second-Meeting Intention (MSMI) per 100 arrived members relative to the supplied greedy, no-clarification, and random-feasible baselines. This hypothesis will be tested through controlled simulator experiments using identical seeds and all six public scenario families. Ablation studies will isolate the contributions of allocation and clarification. The proposed approach is a research direction; its performance advantage has not yet been established.
+Our primary hypothesis is that decision-aware clarification combined with global allocation can improve the benchmark's primary MSMI score over the supplied greedy, no-clarification, and random-feasible baselines. We will test this through paired simulator experiments using common seeds across all six public scenario families. Ablations will isolate the effects of allocation and clarification. No performance improvement is claimed before these experiments are completed.
 
-## 2. Problem Interpretation
+## 1. Problem Interpretation
 
-The challenge is to make sequential introduction decisions in a changing population where preferences are reciprocal, observations may be incomplete, and outcomes are delayed.
+The policy operates over a changing pool of synthetic adults. At each decision step, it must choose clarifications within a limited budget, identify pairs that satisfy both participants' hard constraints, propose a valid non-overlapping batch, and decide whether to act or wait. The consequences of a decision can remain unknown for several days.
 
-At each decision step, a policy must determine:
+The problem combines four challenges:
 
-1. Which available participants require clarification before their eligibility can be established.
-2. Which pairs satisfy both participants' hard constraints and current operational requirements.
-3. Which feasible pairs should be introduced together, ensuring that no participant appears more than once in the same batch.
-4. When it is preferable to wait rather than make an introduction.
-5. How newly observed answers and feedback should influence subsequent decisions.
+1. **Reciprocal feasibility:** both participants must satisfy the other's stated hard constraints.
+2. **Global allocation:** pairs compete for the same people, so selecting the highest-scoring edge first can prevent a better total batch.
+3. **Information acquisition:** missing hard information can block otherwise promising pairs, but clarification has a cost and a fixed daily budget.
+4. **Sequential uncertainty:** feedback is observed only for selected pairs and may not have matured by the current decision time.
 
-The problem has three interconnected dimensions.
+The benchmark uses a 60-day decision horizon followed by 40 days of outcome follow-up. The daily clarification budget is 12 units; the `constraints` bundle costs 3 units and a named soft-field question costs 1 unit. Clarification is immediate in the supplied specification. Each person may have at most one outstanding introduction, and a pair may not be introduced more than once in an episode. The official participant specification and interface are authoritative for all action and scoring details.
 
-**Reciprocity:** Both participants must satisfy the other's explicit eligibility requirements. A high pair score cannot compensate for a hard-constraint violation.
+### 1.1 Primary objective
 
-**Allocation:** The best set of introductions may differ from the set obtained by repeatedly choosing the highest-scoring individual pair. Pair choices compete for the same participants and affect the remaining pool.
+The primary metric is **MSMI per 100 arrived members**. An introduction qualifies only when:
 
-**Sequential uncertainty:** The policy must distinguish genuinely incompatible pairs from pairs whose eligibility remains unknown. Clarification consumes a limited budget, while waiting can preserve future opportunities but may leave participants unserved.
+1. both participants return a positive introduction response;
+2. a date occurs within 30 simulation days of assignment; and
+3. both participants report “yes” to a second meeting within three simulation days of the date.
 
-The principal evaluation outcome is MSMI per 100 arrived members. An introduction qualifies only when a date occurs within 30 simulation days of assignment and both participants record a second-meeting intention of Yes within three simulation days of the date. This is a deliberately downstream outcome: assignment, mutual acceptance, a date, and mutual second-meeting intention are distinct events.
+Mutual acceptance, a date, and second-meeting intention are intermediate stages; none is a substitute for the full MSMI event. Unresolved or immature outcomes must not automatically be labelled failures.
 
-The simulator uses synthetic participants and invented outcomes. Performance on these episodes will be interpreted only as evidence about policy behaviour within the specified simulation environment, not as evidence of real-world relationship compatibility.
+The official primary score equally weights the mean MSMI score of each of the six public scenario families: development/standard, sparse, cold start, delayed, shift, and drift. The specified tie-breakers are distinct-member coverage, mutual acceptances per 100 arrived, lower clarification cost, and lower inference time, in that order. Invalid actions or runtime failures are unacceptable.
 
-## 3. Research Hypothesis and Objectives
+## 2. Research Question and Hypotheses
 
-### 3.1 Primary hypothesis
+### Research question
 
-**H1:** A policy that combines reciprocal hard-constraint enforcement, global non-overlapping allocation, and selective clarification will achieve a higher mean MSMI per 100 arrived members than the supplied greedy, no-clarification, and random-feasible baselines when evaluated on identical seeds and scenario families.
+**Does valuing clarification by its expected marginal improvement to global reciprocal matching, combined with maximum-weight batch allocation, improve the official MSMI score over the supplied greedy baseline?**
 
-This is a hypothesis to test, not an established result.
+### Primary hypothesis
 
-### 3.2 Secondary hypotheses
+**H1 — Decision-aware global matching:** MatchWise will achieve a higher mean MSMI per 100 arrived members than the supplied greedy baseline when all methods are evaluated on identical seeds and scenario families.
 
-- **H2 — Global allocation:** Selecting a set of pairs collectively can improve total estimated pair utility compared with greedy pair selection, particularly when several promising pairs compete for the same participants.
-- **H3 — Selective clarification:** Prioritising questions that can resolve important eligibility uncertainty or change an allocation decision can use the clarification budget more effectively than indiscriminately asking every eligible participant with missing information.
-- **H4 — Robustness:** Explicit handling of missing observations and delayed feedback will reduce invalid decisions and help the policy remain operational across sparse, cold-start, delayed, and changing-condition scenarios.
+### Component hypotheses
 
-### 3.3 Research objectives
+- **H2 — Global allocation:** Maximum-weight matching will improve the total utility of the selected batch relative to greedy selection. Whether this improves MSMI depends on how well the edge weights represent downstream outcomes.
+- **H3 — Selective clarification:** Prioritising questions that can resolve hard-constraint uncertainty or materially change the best batch will use the daily clarification budget more effectively than asking without considering decision impact.
+- **H4 — Outcome-aware utility (exploratory):** A reliable estimate of expected MSMI may rank feasible pairs more usefully than a raw soft-field agreement score. This component will be retained only if the available data supports meaningful estimates.
+- **H5 — Feedback and waiting (exploratory):** Conservative updates from mature feedback or a time-aware wait rule may help in some scenarios, but may also add noise, cost, or delay. Neither is assumed to improve performance in advance.
 
-1. Preserve all reciprocal hard constraints and simulator action requirements.
-2. Develop an interpretable pair-utility function based on observable soft preferences and interaction history.
-3. Investigate pool-wide allocation under the non-overlap constraint.
-4. Design a budget-aware clarification strategy.
-5. Evaluate the proposed components independently and jointly.
-6. Document failure cases, uncertainty, reproducibility, and limitations.
+Each hypothesis is falsifiable. If a component adds complexity without reliable gains, the simpler variant will be preferred.
 
-## 4. Reciprocal Feasibility and Pair Utility
+## 3. Reciprocal Feasibility: Hard Constraints Before Scoring
 
-### 4.1 Hard-constraint enforcement
+MatchWise will use the supplied eligibility logic as the authoritative feasibility contract. No utility score, probability estimate, or coverage preference may override a hard-constraint violation.
 
-MatchWise will use the supplied eligibility semantics as the authoritative feasibility contract. Before considering a pair for allocation, it will check both directions of eligibility and the operational requirements of the simulator.
+For each candidate pair, the policy will respect the official rules for:
 
-The checks include:
+- reciprocal age-range and `who_to_meet` preferences;
+- relationship structure;
+- smoking and children-related constraints;
+- reciprocal acceptable-zone requirements;
+- overlapping schedules;
+- current availability and pool membership;
+- outstanding introductions; and
+- previously introduced pairs.
 
-- Each participant's acceptable age range and explicitly stated genders to meet.
-- Compatible relationship structures under the development contract.
-- Smoking preferences and children-related constraints.
-- Reciprocal acceptable-zone requirements.
-- At least one overlapping schedule slot.
-- Current availability and pool membership.
-- Absence of a previous introduction between the pair.
-- Absence of outstanding introductions and duplicate participants within the proposed batch.
+Each pair will be classified as:
 
-A known hard-constraint failure will exclude the pair even when other information is missing. If a decisive hard constraint is unknown, the pair will remain ineligible for introduction until sufficient information becomes observable. A soft-preference score will never override a hard constraint.
-
-### 4.2 Missing information and eligibility states
-
-The policy will distinguish among observed answers, fields that have not been asked, and answers that have been declined. A null value will not be interpreted as zero, rejection, or disinterest.
-
-The supplied eligibility function distinguishes three outcomes:
-
-- **Feasible:** all required eligibility checks pass.
+- **Feasible:** all required eligibility checks are known and pass.
 - **Infeasible:** at least one known hard constraint fails.
-- **Needs clarification:** eligibility cannot be established because required hard information is missing.
+- **Needs clarification:** no known hard constraint has failed, but required hard information is missing.
 
-Declined answers will remain unavailable. MatchWise will not attempt to reconstruct them from identifiers, simulator generation patterns, future feedback, or other hidden state.
+A known failure takes precedence over missing information. A pair with unresolved required hard information will not be introduced until eligibility can be established. Declined fields remain unknown; the policy will not infer their values or ask for them again.
 
-### 4.3 Soft-preference utility
+### 3.1 Candidate graph
 
-Once reciprocal feasibility is established, MatchWise will use a transparent utility score to compare eligible pairs. Candidate signals may include agreement on relationship goals, relationship pace, lifestyle, conversation preferences, emotional availability, available space for a relationship, and relocation preferences where relevant.
+At time \(t\), available members form the vertices of a graph. An undirected edge is included only for a currently feasible pair that has not already been introduced and has no outstanding assignment. The graph is generally non-bipartite: the challenge does not require a fixed proposer/receiver partition.
 
-The initial utility function will favour interpretable agreement and compatibility signals rather than an unnecessarily complex predictive model. Hard constraints and soft utility will remain separate.
+## 4. Proposed Allocation Method: Global Maximum-Weight Matching
 
-Weights will be treated as design choices to evaluate, not as validated psychological coefficients. The utility score will rank feasible alternatives; it will not be presented as a probability that a relationship will succeed.
+For each feasible edge \((i,j)\), MatchWise will assign a weight \(w_{ij}(t)\) based only on information observable at the current decision time. The initial implementation will use an interpretable soft-preference utility based on observed fields such as relationship goals, pace, lifestyle, conversation preferences, emotional availability, space for a relationship, and relocation preferences where relevant.
 
-## 5. Proposed Allocation Method
+The policy will select a set of edges \(M_t\) that maximises total edge utility, subject to every participant appearing at most once in the batch:
 
-### 5.1 General graph representation
+\[
+\max_{M_t \subseteq E_t} \sum_{(i,j)\in M_t} w_{ij}(t)
+\quad \text{subject to no shared vertices.}
+\]
 
-At each matching phase, the available participants in a pool will be represented as vertices in an undirected graph. An edge will connect two participants only when their pair is currently feasible and has not already been introduced.
+An exact general-graph maximum-weight matching solver, such as NetworkX's `max_weight_matching`, is a candidate for implementation, subject to dependency and runtime testing. If an approximation is used, it will be labelled as an approximation and compared with the exact solver on sampled states where feasible.
 
-Each feasible edge will receive a utility weight derived from the observed soft-preference information and any permitted interaction-history features.
+Global matching is motivated by the fact that a locally strongest pair may consume two people and prevent a better combination of other pairs. Optimality applies only to the supplied weights: it does not guarantee that those weights predict MSMI accurately or solve the sequential decision problem by itself.
 
-The allocation problem is to select a set of edges with no shared vertices. This is a general-graph matching problem, rather than necessarily a bipartite assignment problem, because the supplied environment does not require the participant population to be divided into two fixed sides.
+The policy may return an empty batch when no feasible allocation exists or when waiting is selected. Hard constraints will never be relaxed to increase coverage. Coverage-oriented utility adjustments, if explored, will be a separate ablation because coverage is a tie-breaker rather than the primary objective.
 
-### 5.2 Global allocation
+## 5. Clarification Policy: Decision-Aware Value of Information
 
-The proposed approach will investigate maximum-weight matching over the currently feasible graph. The objective is to select a compatible set of non-overlapping pairs that maximises the total estimated utility for the current batch.
+### 5.1 Core principle
 
-This addresses a limitation of greedy allocation: choosing the strongest individual edge first can prevent the selection of a better combination of other edges.
+A question is useful when its answer is expected to improve the decision—not merely because it reduces uncertainty. For example, clarifying a hard field may unlock several candidate edges, while clarifying an irrelevant field may leave the best matching unchanged.
 
-The global allocation objective will remain subordinate to feasibility. The policy may return an empty pair list when no eligible allocation is available or when waiting is preferable under the chosen decision rule.
+For a candidate query \(q\), define its estimated value as:
 
-### 5.3 Sequential decisions
+\[
+\Delta(q) =
+\mathbb{E}_{a}\left[V\left(M^*(S_t\mid a)\right)\right]
+-
+V\left(M^*(S_t)\right),
+\]
 
-Allocation will be recomputed from the currently observable state as the episode progresses. The policy will account for new arrivals, changes in availability, outstanding introductions, and feedback received since previous decisions.
+where \(S_t\) is the current observable state, \(a\) is a possible answer, \(M^*(S_t)\) is the best matching under the current state, \(M^*(S_t\mid a)\) is the best matching after observing the answer, and \(V(M)\) is the total utility of the selected edges.
 
-Waiting will be treated as a valid action, not automatically as failure. However, excessive waiting may reduce coverage and leave participants unserved. The experiments will therefore examine the trade-off between pair utility, outcome rate, coverage, and waiting time.
+This estimates the expected marginal improvement to the global matching from obtaining the answer. It is a proposed decision rule, not a claim of optimality or a guarantee that the value function is submodular.
 
-## 6. Clarification Policy
+### 5.2 Practical query selection
 
-### 6.1 Budget and action constraints
+The proposed clarification process is:
 
-The simulator provides 12 clarification-budget units per day. Requesting the hard-constraint bundle for one participant costs three units, while requesting one named soft field costs one unit. Clarification is immediate in the supplied simulator, and declined answers remain unknown.
+1. Exclude fields that are already observed or declined, and exclude unavailable members.
+2. Identify candidate questions that could resolve `needs_clarification` edges or materially change weights on high-value candidate pairs.
+3. Prioritise missing hard-constraint information that blocks potentially useful candidates.
+4. Estimate the plausible decision impact of each candidate answer using only permitted training data and currently observable history.
+5. Where feasible, recompute the best matching under candidate answers and rank queries by their expected marginal matching improvement.
+6. Select questions within the exact daily budget, updating marginal values after selected queries when practical.
+7. Refresh the state after clarification resolves and then allocate using the newly observable information.
 
-MatchWise will respect the budget and request information only for currently available participants. After clarification, decisions will use the refreshed observable state.
+As a simple comparison, the policy may use a **blocking-power heuristic**: prioritise a member whose unresolved hard information blocks many potentially feasible pairs. This heuristic is cheaper than full value-of-information calculation and will be tested as a practical approximation, not assumed to be equivalent to exact value of information.
 
-### 6.2 Proposed strategy
+The daily costs must be respected exactly: a hard-constraint bundle costs 3 units and a named soft-field question costs 1 unit, with a total budget of 12 units. Cost is a budget constraint and a ranking tie-breaker; the policy will not subtract arbitrary “cost points” from MSMI utility without a justified conversion.
 
-The clarification policy will prioritise unresolved hard constraints that prevent potentially useful candidates from becoming eligible. Among permissible questions, it will investigate whether selective soft-field clarification can improve the allocation decision enough to justify its cost.
+### 5.3 Runtime-aware approximation
 
-The intended strategy is:
+Evaluating every possible query by recomputing every possible matching may be expensive. The initial scope will restrict queries to those that can affect eligibility or high-value candidate edges, cache the current matching and reusable edge calculations, and benchmark the clarification calculation under the inference time limit. Exact query-value calculations may be compared with a cheaper heuristic on sampled states. Any approximation will be labelled and measured.
 
-1. Identify missing hard information that blocks potentially useful candidate pairs.
-2. Exclude questions about participants who are unavailable or whose known hard constraints already rule out relevant candidates.
-3. Prioritise clarification requests according to their potential to change feasibility or improve the available allocation.
-4. Consider soft-field questions only when the expected decision benefit justifies their budget cost.
-5. Respect the daily budget and preserve declined answers as unknown.
-6. Recompute feasibility and allocation after answers become observable.
+## 6. Optional Probability and Outcome-Aware Utility
 
-A value-of-information-inspired heuristic is a candidate approach for ranking clarification requests. It will be evaluated empirically rather than assumed to be optimal.
+Probability estimation is optional in the challenge. The primary proposal does not depend on a complex predictive model.
 
-### 6.3 Clarification ablation
+The initial edge weight will be a transparent soft-preference utility. If there is sufficient permitted data to estimate downstream outcomes reliably, an exploratory variant may estimate the probability that a feasible pair achieves MSMI, conditional on information observable at the decision time:
 
-To measure the contribution of clarification, the proposed policy will be compared with an otherwise equivalent variant that makes no clarification requests. Additional experiments may compare the selective strategy with the supplied baseline clarification procedure.
+\[
+U_{ij}(t) =
+P(A_{ij}\mid S_t)
+\times
+P(D_{30,ij}\mid A_{ij},S_t)
+\times
+P(R_{2,ij}\mid D_{30,ij},A_{ij},S_t),
+\]
 
-This design will help determine whether improvements arise from the allocation method, the clarification strategy, or their interaction.
+where \(A_{ij}\) is mutual acceptance, \(D_{30,ij}\) is a date within 30 days of assignment, and \(R_{2,ij}\) is both second-meeting “yes” responses within three days of the date. This is a conditional-probability chain rule, not an independence assumption.
 
-## 7. Handling Missing and Delayed Data
+Directional acceptance and mutual acceptance are distinct targets. The policy will not multiply two directional acceptance probabilities unless their dependence is explicitly modelled or the independence assumption is justified. Hard constraints will remain separate binary gates, never features that a probability model can override.
 
-### 7.1 Missing and declined answers
+Because qualifying MSMI outcomes may be sparse, any model will begin simply, use smoothing where appropriate, and track intermediate stages separately for diagnosis. Probability estimates, if reported, will be evaluated for calibration on held-out data. If estimates are unstable, data-starved, or not useful to decisions, the transparent rule-based score will be retained.
 
-Unknown values will remain explicitly unknown. Declined fields will not be repeatedly queried as though they were unanswered, and a missing field will not be treated as a negative preference.
+## 7. Missing, Declined, Delayed, and Censored Data
 
-A pair blocked by missing hard information will not be introduced merely because its observed soft-preference score is high.
+### 7.1 Missingness semantics
 
-### 7.2 Delayed feedback and censoring
+- `null` means unknown, not zero, “no,” or rejection.
+- `not_asked` means the policy has not obtained the answer and may be able to clarify it.
+- `declined` means the answer remains unavailable and must not be requested again.
+- A missing response is not evidence of dislike.
+- A future observation must never influence an earlier decision.
 
-Feedback will be used only after it becomes observable. The policy will not access future events, hidden participant attributes, future arrivals, latent simulator outcomes, or simulator internals.
+### 7.2 Delayed outcomes and right-censoring
 
-The following distinctions will be preserved:
+Only feedback that has become observable may be used at a decision time. Recent introductions may still be awaiting responses, dates, or second-meeting outcomes. Such cases will be treated as pending or censored until the relevant observation window closes, not automatically labelled failures.
 
-- No recorded introduction response by its deadline is not proof of personal dislike.
-- A pair that has not had a date has no observed second-meeting preference.
-- A date without a recorded second-meeting response is not automatically a negative preference label.
-- An outcome whose observation window has not matured will be treated as unresolved rather than automatically unsuccessful.
+The evaluation will follow the prescribed 40-day follow-up period. Stage-level records will distinguish introduction assignment, directional responses, mutual acceptance, date, and second-meeting responses. Late responses may remain part of the history without satisfying the official outcome window.
 
-Evaluation will follow the supplied outcome definition and follow-up period so that recently assigned introductions are not unfairly labelled as failures.
+### 7.3 Selective feedback and temporal leakage
 
-### 7.3 Selective feedback
+Outcomes are observed only for pairs selected by a policy, so feedback is selective and can be biased by earlier decisions. Static historical files will not be treated as an unbiased sample of all possible pairs. Since historical logging propensities are not supplied, the proposal will not claim valid inverse-propensity weighting from those files. Comparisons will rely primarily on controlled simulator rollouts with common seeds.
 
-The policy observes outcomes only for pairs it chooses to introduce. Consequently, the available feedback is selective rather than a complete record of every possible pair.
+Training or updating will use only observations available at the time of the corresponding decision. The policy will not use hidden simulator truth, future profile values, future feedback, private evaluation worlds, or inferred answers derived from identifiers or seeds. Adaptation will be conservative and optional because the number of positive outcomes may be small and selected.
 
-MatchWise will acknowledge this selection effect when interpreting results. It will not claim unbiased offline evaluation using inverse-propensity methods because historical logging propensities are not supplied. Controlled simulator rollouts will be the primary evaluation method.
+## 8. Waiting and Sequential Decisions
 
-## 8. Optional Probability Analysis
+Waiting is a legitimate action, but neither always waiting nor always matching immediately is assumed to be best. A delayed decision may preserve future options, but it also reduces the remaining time for a date and the second-meeting outcome and may leave members unserved.
 
-Probability estimation is optional under the challenge specification and is not required for the executable policy or primary ranking.
+The study will compare:
 
-The initial MatchWise proposal will therefore prioritise feasibility, allocation, and clarification decisions rather than make unvalidated probability predictions.
+1. **Immediate matching:** allocate the best current feasible batch.
+2. **Clarification followed by same-day matching:** obtain high-value information and then allocate using the refreshed state.
+3. **Time-aware waiting (exploratory):** wait only when estimated future-option value exceeds the cost of delay and the reduced time remaining for the MSMI outcome window.
 
-If a later experiment introduces probability estimates, it will distinguish three targets:
-
-1. The probability that participant A accepts participant B.
-2. The probability that participant B accepts participant A.
-3. The probability of mutual acceptance.
-
-These are distinct outcomes. Any model will define the target, observation window, training data, and evaluation procedure. The joint probability will not be obtained by multiplying directional probabilities without explicitly justifying the required independence assumption. If probabilities are reported, their calibration and uncertainty will be evaluated on held-out observations.
+No fixed day-based rule will be introduced without experimental evidence. Waiting-time distributions and the number of members never served will be reported alongside MSMI and coverage.
 
 ## 9. Experimental Design
 
-### 9.1 Baselines
+### 9.1 Required baselines
 
-MatchWise will be compared against all three supplied baselines:
+All three supplied baselines will be evaluated:
 
-- **Greedy:** the reference clarification procedure followed by greedy allocation based on observed soft-preference agreement.
-- **No-clarification:** a baseline that makes no clarification requests and uses the corresponding matching procedure.
-- **Random-feasible:** a baseline that randomises feasible candidate edges and selects a non-overlapping set.
+- **Greedy:** supplied clarification procedure and greedy pair allocation.
+- **No-clarification:** no clarification requests, using the corresponding baseline matching procedure.
+- **Random-feasible:** randomised selection among feasible candidate edges with non-overlapping introductions.
 
-All methods will be evaluated with identical seeds and scenario variants. Baseline comparisons will use the supplied evaluator and will preserve the simulator's feasibility and outcome definitions.
+All comparisons will use identical seeds and scenario variants. Baseline results are reference points, not evidence that the proposed MatchWise policy improves performance.
 
-### 9.2 Public scenario families
+### 9.2 Proposed policy variants
 
-Experiments will cover all six public scenario families:
+To isolate components, the planned comparisons are:
 
-- **Development:** the standard public development setting.
-- **Sparse:** reduced candidate availability due to sparse geography.
-- **Cold start:** limited information and interaction history.
-- **Delayed:** delayed dates and downstream feedback.
-- **Shift:** changed outcome-weight conditions.
-- **Drift:** changing response conditions.
+- **Global matching only:** global allocation with a simple utility and the baseline clarification strategy.
+- **Blocking-power clarification + global matching:** test the lower-cost clarification heuristic.
+- **Decision-aware clarification + global matching:** evaluate query selection by expected change in best matching utility.
+- **Outcome-aware utility (optional):** replace the soft-agreement proxy only if a reliable estimator can be developed.
+- **No-feedback variant (optional):** compare any conservative feedback update against a fixed utility.
+- **Immediate vs time-aware variant (optional):** test waiting separately from allocation and clarification.
 
-The experiments will investigate whether each design choice behaves consistently across these settings rather than relying on a single favourable episode.
+The full proposed policy is decision-aware clarification with global matching. Optional extensions will be added only if there is enough time to implement and evaluate them reliably.
 
-### 9.3 Seeds and reproducibility
+### 9.3 Scenarios and seeds
 
-The initial public comparison will use seeds 101, 102, and 103 across all six variants. Each policy will be evaluated using the same settings, and the full machine-readable episode results will be retained.
+Evaluate all six public scenario families: development/standard, sparse, cold start, delayed, shift, and drift. Use common seeds for every method so that comparisons are paired. The current development comparison uses seeds 101, 102, and 103; additional common seeds should be run if time and compute permit. The official private evaluation uses its own seeds and is not represented by the public development runs.
 
-The initial runs are development experiments, not the private competition evaluation. Additional seeds may be used where feasible to assess variation and reduce dependence on a small sample of synthetic episodes.
+Training, validation, and development-test pools will remain separate. People or pairs must not be split across training and test. Every independent episode starts with fresh policy memory.
 
-Policy memory will start from its declared initial state for every independent episode. Any randomisation used by MatchWise will be controlled and documented.
+### 9.4 Metrics and aggregation
 
-### 9.4 Evaluation metrics
+The primary metric is the official equally weighted mean of the six scenario-family means of MSMI per 100 arrived members. The following secondary metrics will be reported:
 
-The primary metric will be the equally weighted mean of scenario-level MSMI per 100 arrived members, as defined by the supplied evaluator.
+- distinct-member coverage;
+- mutual acceptances per 100 arrived members;
+- clarification cost, including cost by question type where available;
+- inference time, including startup and worst-case invocation;
+- invalid actions and invalid episodes;
+- first-introduction waiting time and number never served;
+- stage-level counts for responses, mutual acceptance, dates and second-meeting outcomes; and
+- pending or missing feedback and censoring.
 
-Secondary metrics will include:
+Means, per-seed results, scenario-level outcomes, and uncertainty will be reported. Denominators will not be pooled across scenario families, and the best seed will not be cherry-picked. If probabilities are reported, calibration will be assessed separately. All episodes must be valid.
 
-- Distinct-member introduction coverage.
-- Mutual acceptances per 100 arrived members.
-- Number of assignments, mutual acceptances, dates, and qualifying MSMI outcomes.
-- First-introduction waiting times and the number of unserved members.
-- Clarification cost and the amount of missing feedback.
-- Runtime and valid-episode rate.
+## 10. Ablations and Failure Cases
 
-Results will be reported at scenario level and across seeds. Outcome counts and uncertainty will be discussed explicitly because qualifying events may be rare in small synthetic episodes. The primary score will not be replaced with a more favourable metric.
+### 10.1 Hypothesis-driven ablations
 
-## 10. Planned Ablations
+At least one ablation will be completed; the preferred initial set is:
 
-At least one hypothesis-driven ablation will test a causal design claim within the simulator. The planned studies are:
+**Ablation A — Greedy vs global allocation.** Replace global maximum-weight matching with greedy selection while keeping the utility and clarification strategy unchanged. This tests whether global allocation improves batch utility and the primary outcome.
 
-**Ablation A — Global versus greedy allocation:** Replace global maximum-weight matching with greedy pair selection while keeping the remaining policy components unchanged. This will test whether pool-wide allocation improves the primary outcome and how it affects coverage and waiting time.
+**Ablation B — No clarification vs selective clarification.** Disable clarification while retaining the same allocation procedure. This measures the contribution of information acquisition.
 
-**Ablation B — Selective clarification versus no clarification:** Disable clarification while retaining the same allocation procedure. This will measure the contribution of acquiring missing information under the simulator's budget and disclosure rules.
+**Ablation C — Blocking-power vs decision-aware clarification.** Compare the inexpensive heuristic with the expected-marginal-improvement approach under the same daily budget. This tests whether the additional computation is worthwhile.
 
-**Ablation C — Utility design:** Where time permits, compare the initial interpretable utility with a simpler agreement score. This will examine whether added utility complexity contributes measurable benefit.
+Optional ablations will compare the soft-agreement proxy with outcome-aware utility, fixed utility with feedback adaptation, and immediate allocation with time-aware waiting. One main component should change at a time wherever possible.
 
-The comparisons will use identical seeds and scenarios. Each ablation will change one main component at a time wherever possible. Results will be interpreted cautiously when the number of qualifying outcomes is small.
+### 10.2 Expected failure cases
 
-## 11. Expected Failure Cases and Risk Analysis
+- **Sparse candidate graph:** hard constraints, geography, or schedules may leave few or no feasible edges. No matching algorithm can create a valid partner where no edge exists.
+- **Cold start:** little observed history can make utility weights weak and outcome estimates noisy.
+- **Clarification budget exhaustion:** some hard constraints may remain unresolved, preventing otherwise possible introductions.
+- **Declined hard fields:** a pair may remain unmatchable because eligibility cannot be established; the policy will not infer or override the missing answer.
+- **Delayed feedback and censoring:** outcomes may not mature before a decision or episode ends. Pending outcomes must not be counted as failures.
+- **Selection bias:** the policy observes outcomes only for its chosen pairs, so naïve learning may reinforce earlier selection decisions.
+- **Utility misspecification:** soft-field agreement or estimated MSMI utility may not rank outcomes correctly.
+- **Over-waiting:** waiting may reduce coverage or leave insufficient time for the full MSMI outcome window.
+- **Runtime or invalid actions:** expensive query-value calculations or an invalid batch can invalidate an episode. Runtime and action validity are hard requirements, not optional quality metrics.
+- **Small outcome counts:** a zero MSMI count in a small episode does not establish equivalence between methods.
 
-### Sparse candidate supply
+The policy will be kept simple if more complex components do not produce reliable improvements.
 
-Some participants may have no feasible partner because of reciprocal preferences, geography, schedule, or other hard constraints. No allocation algorithm can create a valid edge where none exists. MatchWise will permit empty batches and report unserved participants rather than relaxing hard constraints.
+## 11. Preliminary Baseline Observations
 
-### Missing or declined hard information
-
-A potentially useful pair may remain unresolved because a required answer is missing or declined. Clarification may help only when the information is disclosed and the resulting pair remains feasible. The policy must accept that some candidates cannot be safely introduced.
-
-### Cold starts
-
-New participants may have little observable history. The initial approach will rely on explicit constraints and interpretable observed preferences rather than treating absent feedback as negative evidence. Its utility estimates may be less informative when little information is available.
-
-### Delayed and missing feedback
-
-Downstream outcomes may not be observable by the end of an episode's decision period. This can make apparent performance noisy and can bias interpretations if unresolved cases are treated as failures. The prescribed follow-up and outcome windows will be respected.
-
-### Distribution shift and drift
-
-Utility weights that work under one synthetic scenario may not work under another. The policy may lose performance when response conditions or outcome-generating assumptions change. Scenario-level results and ablations will be used to identify such weaknesses.
-
-### Clarification budget exhaustion
-
-Questions may consume budget without changing eligibility or allocation. The selective clarification heuristic may prioritise the wrong question or overestimate the usefulness of information. Clarification cost will therefore be reported alongside primary outcomes.
-
-### Utility misspecification
-
-Observed agreement on soft fields may not translate into the simulator's downstream outcome. An interpretable score can still be poorly aligned with MSMI. The experiments will test this assumption rather than treating the score as a validated measure of compatibility.
-
-### Over-allocation and excessive waiting
-
-A policy focused on high utility may serve too few participants, while a policy focused on coverage may make lower-value introductions. The study will examine the trade-off between MSMI, coverage, and waiting times.
-
-## 12. Preliminary Evidence and Interpretation
-
-Initial experiments have been conducted using the supplied public evaluator with seeds 101, 102, and 103 across the six public scenario variants. The following primary scores were observed for the supplied baselines:
+The current public development runs using seeds 101, 102, and 103 across the six scenario variants produced the following primary scores for the supplied baselines:
 
 | Baseline | Preliminary primary score |
 |---|---:|
@@ -296,30 +279,36 @@ Initial experiments have been conducted using the supplied public evaluator with
 | Random-feasible | 0.278 |
 | No-clarification | 0.139 |
 
-These values are preliminary observations from public synthetic simulator runs. They are not results from an implemented MatchWise policy, do not establish statistical significance, and do not represent the private competition leaderboard.
+These values are preliminary observations from the supplied synthetic simulator and evaluator. They are not results from the proposed MatchWise policy, do not establish statistical significance, and do not represent the private competition leaderboard. The final report should retain the corresponding machine-readable results and exact evaluation settings.
 
-The initial comparison motivates two questions for further research: whether clarification improves downstream outcomes under the tested conditions, and whether a more deliberate allocation method can improve the selection of non-overlapping pairs. The proposed experiments are intended to investigate these questions while accounting for coverage, clarification cost, scenario variation, and low outcome counts.
+The baseline comparison motivates further investigation of clarification and allocation, but it does not prove that either proposed component will improve MSMI. All claims about MatchWise performance will be made only after the corresponding experiments have been run.
 
-No performance advantage for the proposed MatchWise policy is claimed at this stage.
+## 12. Limitations, Provenance, and Reproducibility
 
-## 13. Reproducibility, Data Provenance, and Implementation Boundaries
+The benchmark uses synthetic participants, preferences, and outcomes. Results establish performance only within the tested simulation settings and cannot demonstrate real-world relationship compatibility or predict real people's decisions.
 
-The research uses the public participant kit and its synthetic dataset. No real personal records, production database credentials, or external relationship data are required.
+The implementation will follow the supplied policy interface and use only observable state, permitted clarification results, mature feedback, and explicitly carried policy memory. The public data contract and eligibility logic define the source of truth for feasibility and missingness. Random seeds, dependencies, evaluation commands, and all experiment outputs will be documented. Any additional model, tool, or external asset will have its provenance and licence recorded.
 
-The executable policy will follow the supplied versioned JSON interface. It will consume only observable state, permitted clarification results, observable feedback, and explicitly carried policy memory. It will return valid clarification requests or feasible non-overlapping pairs and may return an empty list when appropriate.
+The repository currently contains the supplied starter policy and baseline experiment outputs. Global allocation, decision-aware clarification, outcome-aware utility, feedback adaptation, and time-aware waiting must be described as proposed components until they are implemented and evaluated. The final build report will include measured results, scenario-level outcomes, ablations, runtime, and limitations.
 
-The evaluation environment is designed for offline CPU inference. Any additional dependency, model, training asset, or external resource introduced during development will be documented with its provenance and licence. Random seeds and evaluation commands will be recorded to support reproducibility.
+## References
 
-The current repository contains the starter policy and preliminary baseline results. The global allocation and selective clarification components described in this note remain proposed work until implemented and evaluated. Subsequent results will be reported with their exact commands, seeds, scenarios, and limitations.
+1. Romeo & Juliet (2026). *The One Introduction Problem: Sequential Reciprocal Matching Under Uncertainty*. Participant specification, version 1.0.0, 5 October 2026. [https://github.com/RomeoJulietLove/The-Sequential-Matching-Problem/blob/main/PROBLEM_STATEMENT.md](https://github.com/RomeoJulietLove/The-Sequential-Matching-Problem/blob/main/PROBLEM_STATEMENT.md).
 
-## 14. Limitations and Responsible Interpretation
+2. Romeo & Juliet (2026). *Participant Contract 1.0.0*. Supplied challenge documentation, [`docs/DATA_CONTRACT.md`](https://github.com/RomeoJulietLove/The-Sequential-Matching-Problem/blob/main/docs/DATA_CONTRACT.md).
 
-The simulator's participants, answers, interactions, and outcomes are invented. Its fictional geography, immediate clarification mechanism, whole-day timing, and outcome-generation assumptions are simplifications of an introduction process.
+3. Romeo & Juliet (2026). *Policy Interface 1.0.0*. Supplied challenge documentation, [`docs/POLICY_INTERFACE.md`](https://github.com/RomeoJulietLove/The-Sequential-Matching-Problem/blob/main/docs/POLICY_INTERFACE.md).
 
-A higher MSMI score in this environment would establish only that a policy performs better under the tested simulation conditions. It would not demonstrate that the policy can predict real relationships, infer private preferences, or improve outcomes for real people.
+4. Karp, R. M., Vazirani, U. V., & Vazirani, V. V. (1990). An optimal algorithm for on-line bipartite matching. *Proceedings of the 22nd Annual ACM Symposium on Theory of Computing*, 352–358. [https://doi.org/10.1145/100216.100262](https://doi.org/10.1145/100216.100262).
 
-Any later authorised product integration would require an explicit adapter, validation of data semantics, privacy safeguards, human review, and separate permission for product use. The policy should never bypass a participant's stated constraints or infer undisclosed preferences.
+5. Edmonds, J. (1965). Paths, trees, and flowers. *Canadian Journal of Mathematics, 17*, 449–467. [https://doi.org/10.4153/CJM-1965-045-4](https://doi.org/10.4153/CJM-1965-045-4).
 
-The research will therefore prioritise constraint compliance, transparent decision logic, controlled evaluation, and explicit limitations over unsupported claims about human compatibility.
+6. Gale, D., & Shapley, L. S. (1962). College admissions and the stability of marriage. *The American Mathematical Monthly, 69*(1), 9–15. [https://doi.org/10.2307/2312726](https://doi.org/10.2307/2312726).
 
-## 15. References
+7. Pizzato, L., Rej, T., Chung, T., Koprinska, I., & Kay, J. (2010). RECON: A reciprocal recommender for online dating. *Proceedings of the 4th ACM Conference on Recommender Systems*, 207–214. [https://doi.org/10.1145/1864708.1864747](https://doi.org/10.1145/1864708.1864747).
+
+8. Howard, R. A. (1966). Information value theory. *IEEE Transactions on Systems Science and Cybernetics, 2*(1), 22–26. [https://doi.org/10.1109/TSSC.1966.300074](https://doi.org/10.1109/TSSC.1966.300074).
+
+9. Saar-Tsechansky, M., Melville, P., & Provost, F. (2009). Active feature-value acquisition. *Management Science, 55*(4), 664–684. [https://doi.org/10.1287/mnsc.1080.0952](https://doi.org/10.1287/mnsc.1080.0952).
+
+10. Wilder, B., Dilkina, B., & Tambe, M. (2019). Melding the data-decisions pipeline: Decision-focused learning for combinatorial optimization. *Proceedings of the AAAI Conference on Artificial Intelligence, 33*(1), 1658–1665. [https://doi.org/10.1609/aaai.v33i01.33011658](https://doi.org/10.1609/aaai.v33i01.33011658).
