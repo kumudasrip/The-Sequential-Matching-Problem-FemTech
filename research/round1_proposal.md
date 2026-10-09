@@ -2,7 +2,7 @@
 
 **Round 1 Research Proposal**  
 **Hackathon:** Romeo & Juliet × IIT Madras  
-**Team project:** MatchWise
+**Team Name:** FemTech | **Team project:** MatchWise
 
 ## Abstract
 
